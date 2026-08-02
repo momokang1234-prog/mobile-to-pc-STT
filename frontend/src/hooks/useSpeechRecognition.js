@@ -5,9 +5,9 @@ export default function useSpeechRecognition(socket) {
   const [currentText, setCurrentText] = useState('');
   const recognitionRef = useRef(null);
   const shouldListenRef = useRef(false);
+  const lastSentTextRef = useRef('');
 
   useEffect(() => {
-    // 브라우저 지원 여부 확인
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("이 브라우저는 내장 음성 인식을 지원하지 않습니다. Chrome 혹은 Safari 최신 버전을 사용해주세요.");
@@ -16,13 +16,11 @@ export default function useSpeechRecognition(socket) {
 
     const recognition = new SpeechRecognition();
     recognition.lang = 'ko-KR';
-    // 안드로이드 크롬 버그(isFinal 결과가 중첩되는 현상)를 피하기 위해 
-    // continuous를 false로 두고, onend에서 재시작하도록 합니다.
     recognition.continuous = false;
     recognition.interimResults = true;
 
     recognition.onstart = () => {
-      // onstart 시 기존 상태 초기화
+      lastSentTextRef.current = '';
     };
 
     recognition.onresult = (event) => {
@@ -37,17 +35,39 @@ export default function useSpeechRecognition(socket) {
         }
       }
 
-      const displayText = newFinalTranscript || interimTranscript;
-      if (displayText) {
-        setCurrentText(displayText);
+      const text = newFinalTranscript || interimTranscript;
+      if (text) {
+        setCurrentText(text);
       }
 
-      // 새로 완결된 텍스트가 있을 때만 서버로 전송합니다.
-      if (socket && newFinalTranscript.trim().length > 0) {
-        socket.emit('speech_text', {
-          text: newFinalTranscript,
-          isFinal: true
-        });
+      if (socket) {
+        const lastText = lastSentTextRef.current;
+        let commonLen = 0;
+        const minLen = Math.min(lastText.length, text.length);
+        while (commonLen < minLen && lastText[commonLen] === text[commonLen]) {
+          commonLen++;
+        }
+
+        const deleteCount = lastText.length - commonLen;
+        let appendText = text.slice(commonLen);
+        const isFinal = !!newFinalTranscript;
+
+        if (isFinal) {
+          appendText += ' ';
+        }
+
+        if (deleteCount > 0 || appendText.length > 0) {
+          socket.emit('speech_diff', {
+            deleteCount,
+            typeText: appendText
+          });
+          
+          if (isFinal) {
+            lastSentTextRef.current = '';
+          } else {
+            lastSentTextRef.current = text;
+          }
+        }
       }
     };
 
@@ -66,7 +86,6 @@ export default function useSpeechRecognition(socket) {
     };
 
     recognition.onend = () => {
-      // 인식이 종료되었을 때, 사용자가 명시적으로 중지한 게 아니라면 재시작
       if (shouldListenRef.current) {
         try {
           recognition.start();

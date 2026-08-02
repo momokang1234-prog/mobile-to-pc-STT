@@ -8,19 +8,22 @@ function setupSocketHandlers(io, keyboardSimulator) {
     });
 
     /**
-     * 음성 텍스트 수신 → 키보드 시뮬레이션
-     * data: { text: string, isFinal: boolean }
+     * 음성 텍스트 변경점 수신 → 키보드 시뮬레이션
+     * data: { deleteCount: number, typeText: string }
      */
-    socket.on('speech_text', (data) => {
-      const { text, isFinal } = data;
+    socket.on('speech_diff', (data) => {
+      const { deleteCount, typeText } = data;
 
-      if (!text) return;
-
-      // 사용자의 요청에 따라 지우는 로직(backspace)을 제거하고, 
-      // 완결된 텍스트(isFinal: true)만 그대로 주입합니다.
-      if (isFinal) {
-        keyboardSimulator.typeText(text + ' ');
-        console.log(`[STT] FINAL TYPED: "${text}"`);
+      if (deleteCount > 0) {
+        if (typeText) {
+          keyboardSimulator.replaceInterim(deleteCount, typeText);
+        } else {
+          keyboardSimulator.deleteChars(deleteCount);
+        }
+        console.log(`[STT] DIFF: Deleted ${deleteCount}, Typed "${typeText}"`);
+      } else if (typeText) {
+        keyboardSimulator.typeText(typeText);
+        console.log(`[STT] DIFF: Appended "${typeText}"`);
       }
     });
 
@@ -38,7 +41,5 @@ function setupSocketHandlers(io, keyboardSimulator) {
     });
   });
 }
-
-module.exports = setupSocketHandlers;
 
 module.exports = setupSocketHandlers;
