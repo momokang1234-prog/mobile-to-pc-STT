@@ -6,3 +6,8 @@ release/
 .DS_Store
 *.apk
 *.aab
+
+# 워크스페이스 마운트(심볼릭) 및 Windows 바로가기
+_memory
+twin
+*.lnk
